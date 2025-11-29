@@ -27,7 +27,7 @@ jobs:
           source: "release.tar.gz"
           target: ${{ secrets.DEPLOY_PATH }}
 
-      - name: SSH: extract and run deploy commands
+      - name: SSH extract and run deploy commands
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.ALI_HOST }}

@@ -1,0 +1,58 @@
+name: Deploy to Alibaba Cloud Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    name: Deploy on push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create release archive
+        run: |
+          tar -czf release.tar.gz --exclude=.git --exclude=.github .
+
+      - name: Upload archive to remote server (SCP)
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.ALI_HOST }}
+          username: ${{ secrets.ALI_USER }}
+          port: ${{ secrets.ALI_PORT }}
+          key: ${{ secrets.ALI_SSH_PRIVATE_KEY }}
+          source: "release.tar.gz"
+          target: ${{ secrets.DEPLOY_PATH }}
+
+      - name: SSH: extract and run deploy commands
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ALI_HOST }}
+          username: ${{ secrets.ALI_USER }}
+          port: ${{ secrets.ALI_PORT }}
+          key: ${{ secrets.ALI_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+            tar -xzf release.tar.gz -C .
+            rm -f release.tar.gz
+            export MCP_ENDPOINT="${{ secrets.MCP_ENDPOINT }}"
+            python mcp_pipe.py
+
+      - name: Cleanup local archive
+        if: always()
+        run: rm -f release.tar.gz
+
+# 说明：
+# 1) 请在仓库 Settings -> Secrets and variables -> Actions 中添加以下 secrets：
+#    - ALI_HOST: 47.107.36.64
+#    - ALI_PORT: 22
+#    - ALI_USER: admin
+#    - ALI_SSH_PRIVATE_KEY: （你的私钥 PEM 内容，建议不带密码）
+#    - DEPLOY_PATH: /home/admin/mcp-servers/xiaozhi-mcp/
+#    - MCP_ENDPOINT: wss://api.xiaozhi.me/mcp/?token=ey....
+# 2) 私钥内容建议直接粘贴，不要带密码（如有密码请告知）。
+# 3) 如需自定义命令，可在 SSH 步骤 script 里补充。

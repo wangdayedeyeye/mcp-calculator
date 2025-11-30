@@ -3,6 +3,7 @@ name: Deploy to Alibaba Cloud Server
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:  # 启用手动触发（无参数）
 
 jobs:
   deploy:

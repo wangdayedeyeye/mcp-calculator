@@ -46,6 +46,8 @@ jobs:
           username: ${{ vars.ALI_USER }}
           port: ${{ vars.ALI_PORT }}
           key: ${{ secrets.ALI_SSH_PRIVATE_KEY }}
+          timeout: 60s
+          command_timeout: 20m
           script: |
             set -e
             cd "${{ vars.DEPLOY_PATH }}"
@@ -56,8 +58,12 @@ jobs:
             source .venv/bin/activate
             # 停止旧进程 (简单粗暴方式，或者用 pkill -f mcp_pipe.py)
             pkill -f mcp_pipe.py || true
-            # 后台启动
+            # 修改点 2: 更稳健的后台启动方式
+            # 增加 sleep 1 确保 nohup 完全脱离当前 SSH 会话
+            # 使用 > /dev/null 丢弃输出，或者确保日志文件写入不会阻塞
             nohup .venv/bin/python mcp_pipe.py > output.log 2>&1 &
+            sleep 2
+            echo "✅ Deployment finished successfully."
 
 
       - name: Cleanup local archive

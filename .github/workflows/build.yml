@@ -40,6 +40,8 @@ jobs:
             tar -xzf release.tar.gz -C .
             rm -f release.tar.gz
             export MCP_ENDPOINT="${{ secrets.MCP_ENDPOINT }}"
+            uv sync -i https://pypi.tuna.tsinghua.edu.cn/simple
+            source .venv/bin/activate
             python mcp_pipe.py
 
       - name: Cleanup local archive

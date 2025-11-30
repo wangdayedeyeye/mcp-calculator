@@ -15,7 +15,7 @@ jobs:
 
       - name: Create release archive
         run: |
-          tar -czf release.tar.gz --exclude=.git --exclude=.github .
+          tar -czf release.tar.gz --exclude=.git --exclude=.github --exclude=.venv --exclude=release.tar.gz .
 
       - name: Upload archive to remote server (SCP)
         uses: appleboy/scp-action@master

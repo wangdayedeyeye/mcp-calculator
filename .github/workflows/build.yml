@@ -24,59 +24,46 @@ jobs:
           timeout: 60s
           command_timeout: 20m
           script: |
+            # 设置严格模式：遇到错误直接退出，使用未定义变量报错
             set -Eeuo pipefail
-            trap 'echo "❌ 部署失败，行号: $LINENO"; exit 1' ERR
+            
+            # 1. 准备环境变量
             DEPLOY_PATH="${{ vars.DEPLOY_PATH }}"
-            MCP_ENDPOINT="${{ vars.MCP_ENDPOINT }}"
-            FC_TMT_API_URL="${{ vars.FC_TMT_API_URL }}"
-            FC_TMT_API_TOKEN="${{ vars.FC_TMT_API_TOKEN }}"
-            : "${DEPLOY_PATH:?缺少 DEPLOY_PATH}"
-            : "${MCP_ENDPOINT:?缺少 MCP_ENDPOINT}"
-            : "${FC_TMT_API_URL:?缺少 FC_TMT_API_URL}"
-            : "${FC_TMT_API_TOKEN:?缺少 FC_TMT_API_TOKEN}"
-            cd "${DEPLOY_PATH}" || { echo "❌ 目录不存在: ${DEPLOY_PATH}"; exit 1; }
-            [[ -d ".git" ]] || { echo "❌ 目标目录不是 Git 仓库: ${DEPLOY_PATH}"; exit 1; }
-            git fetch --all --quiet || { echo "❌ 拉取远端代码失败"; exit 1; }
-            git reset --hard origin/main || { echo "❌ 重置到 origin/main 失败"; exit 1; }
-            command -v uv >/dev/null 2>&1 || { echo "❌ 未安装 uv，请先安装"; exit 1; }
-            export MCP_ENDPOINT
-            export FC_TMT_API_URL
-            export FC_TMT_API_TOKEN
-            echo "🔧 依赖安装中..."
-            uv sync -i https://pypi.tuna.tsinghua.edu.cn/simple || { echo "❌ 依赖同步失败"; exit 1; }
-            [[ -x ".venv/bin/python" ]] || { echo "❌ 未找到虚拟环境解释器: .venv/bin/python"; exit 1; }
-            source .venv/bin/activate
-            [[ -f "mcp_pipe.py" ]] || { echo "❌ 未找到启动脚本: mcp_pipe.py"; exit 1; }
-            echo "🚀 正在重启进程..."
-            LOG_DIR="logs"
-            PID_FILE="mcp_pipe.pid"
-            LOG_FILE="$LOG_DIR/mcp_pipe.log"
-            mkdir -p "$LOG_DIR"
-            if [[ -f "$PID_FILE" ]]; then
-              OLD_PID="$(cat "$PID_FILE" || true)"
-              if [[ -n "${OLD_PID:-}" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
-                echo "🔴 终止旧进程: $OLD_PID"
-                kill "$OLD_PID"
-                sleep 2
-                if kill -0 "$OLD_PID" 2>/dev/null; then
-                  echo "⚠️ 旧进程未退出，强制杀死"
-                  kill -9 "$OLD_PID"
-                fi
-              fi
-              rm -f "$PID_FILE"
-            fi
+            export MCP_ENDPOINT="${{ vars.MCP_ENDPOINT }}"
+            export FC_TMT_API_URL="${{ vars.FC_TMT_API_URL }}"
+            export FC_TMT_API_TOKEN="${{ vars.FC_TMT_API_TOKEN }}"
+            
+            # 2. 更新代码
+            echo "📥 更新代码..."
+            cd "$DEPLOY_PATH"
+            git fetch --all --quiet
+            git reset --hard origin/main
+            
+            # 3. 安装依赖 (uv 自带 venv 管理)
+            echo "🔧 安装依赖..."
+            # 假设 uv 已安装在系统路径，无需手动检查 command -v
+            uv sync -i https://pypi.tuna.tsinghua.edu.cn/simple
+            
+            # 4. 重启服务
+            echo "🚀 重启进程..."
+            LOG_FILE="logs/mcp_pipe.log"
+            mkdir -p logs
+            
+            # 直接使用 pkill 杀掉旧进程 (忽略无进程时的错误)
             pkill -f "python.*mcp_pipe.py" || true
-            nohup .venv/bin/python mcp_pipe.py >> "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
-            NEW_PID="$(cat "$PID_FILE" || true)"
-            sleep 1
-            if [[ -n "${NEW_PID:-}" ]] && kill -0 "$NEW_PID" 2>/dev/null; then
+            
+            # 后台启动
+            nohup .venv/bin/python mcp_pipe.py >> "$LOG_FILE" 2>&1 < /dev/null & 
+            NEW_PID=$!
+            
+            # 5. 验证启动
+            sleep 3
+            if kill -0 "$NEW_PID" 2>/dev/null; then
               echo "✅ 部署成功，PID: $NEW_PID"
+              echo "📄 最近日志："
+              tail -n 20 "$LOG_FILE"
             else
-              echo "❌ 进程未启动，最近日志："
-              tail -n 200 "$LOG_FILE" || true
+              echo "❌ 进程启动失败，日志如下："
+              tail -n 50 "$LOG_FILE"
               exit 1
             fi
-            echo "✅ 进程状态："
-            ps -o pid,cmd -p "$NEW_PID" || true
-            echo "📄 最近日志："
-            tail -n 50 "$LOG_FILE" || true

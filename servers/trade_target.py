@@ -3,6 +3,7 @@ import os
 import json
 from urllib import request, error
 import time
+import ssl
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,6 +13,10 @@ mcp = FastMCP("Watchlist Server", json_response=True)
 
 def _post_json(api: str, tok: str, body: dict, timeout: int = 15, retries: int = 2, backoff: float = 0.6):
     data = json.dumps(body).encode("utf-8")
+    # Create SSL context that ignores certificate verification (match mcp_pipe.py behavior)
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
     attempt = 0
     last_err = None
     while attempt <= retries:
@@ -19,7 +24,7 @@ def _post_json(api: str, tok: str, body: dict, timeout: int = 15, retries: int =
         req.add_header("Content-Type", "application/json")
         req.add_header("Authorization", f"Bearer {tok}")
         try:
-            with request.urlopen(req, timeout=timeout) as resp:
+            with request.urlopen(req, timeout=timeout, context=ssl_context) as resp:
                 charset = resp.headers.get_content_charset() or "utf-8"
                 text = resp.read().decode(charset)
                 try:

@@ -47,8 +47,36 @@ jobs:
             [[ -x ".venv/bin/python" ]] || { echo "❌ 未找到虚拟环境解释器: .venv/bin/python"; exit 1; }
             source .venv/bin/activate
             [[ -f "mcp_pipe.py" ]] || { echo "❌ 未找到启动脚本: mcp_pipe.py"; exit 1; }
-            echo "🚀 正在重启服务..."
-            sudo systemctl restart mcp_pipe || { echo "❌ 重启 mcp_pipe 失败"; sudo systemctl status mcp_pipe --no-pager; exit 1; }
-            systemctl is-active --quiet mcp_pipe || { echo "❌ mcp_pipe 未处于活跃状态，最近日志："; sudo journalctl -u mcp_pipe --no-pager -n 200; exit 1; }
-            echo "✅ 部署成功，服务状态："
-            sudo systemctl status mcp_pipe --no-pager
+            echo "🚀 正在重启进程..."
+            LOG_DIR="logs"
+            PID_FILE="mcp_pipe.pid"
+            LOG_FILE="$LOG_DIR/mcp_pipe.log"
+            mkdir -p "$LOG_DIR"
+            if [[ -f "$PID_FILE" ]]; then
+              OLD_PID="$(cat "$PID_FILE" || true)"
+              if [[ -n "${OLD_PID:-}" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
+                echo "🔴 终止旧进程: $OLD_PID"
+                kill "$OLD_PID"
+                sleep 2
+                if kill -0 "$OLD_PID" 2>/dev/null; then
+                  echo "⚠️ 旧进程未退出，强制杀死"
+                  kill -9 "$OLD_PID"
+                fi
+              fi
+              rm -f "$PID_FILE"
+            fi
+            pkill -f "python.*mcp_pipe.py" || true
+            nohup .venv/bin/python mcp_pipe.py >> "$LOG_FILE" 2>&1 & echo $! > "$PID_FILE"
+            NEW_PID="$(cat "$PID_FILE" || true)"
+            sleep 1
+            if [[ -n "${NEW_PID:-}" ]] && kill -0 "$NEW_PID" 2>/dev/null; then
+              echo "✅ 部署成功，PID: $NEW_PID"
+            else
+              echo "❌ 进程未启动，最近日志："
+              tail -n 200 "$LOG_FILE" || true
+              exit 1
+            fi
+            echo "✅ 进程状态："
+            ps -o pid,cmd -p "$NEW_PID" || true
+            echo "📄 最近日志："
+            tail -n 50 "$LOG_FILE" || true

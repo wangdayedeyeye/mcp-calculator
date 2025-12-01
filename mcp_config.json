@@ -1,11 +1,6 @@
 {
   "mcpServers": {
-    "local-stdio-calculator": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["-m", "servers.calculator"]
-    },
-    "local-studio-trade-target": {
+    "trade-target": {
       "type": "stdio",
       "command": "python",
       "args": ["-m", "servers.trade_target"]
@@ -15,11 +10,19 @@
       "url": "https://dashscope.aliyuncs.com/api/v1/mcps/china-railway/sse",
       "headers": {
         "Authorization": "Bearer sk-11a03e9b68fd40c1936db00fbc37221e"
-      }
+      },
+      "disabled": true
     },
     "amap-maps": {
       "type": "sse",
       "url": "https://dashscope.aliyuncs.com/api/v1/mcps/amap-maps/sse",
+      "headers": {
+        "Authorization": "Bearer sk-11a03e9b68fd40c1936db00fbc37221e"
+      }
+    },
+    "remote-http-server": {
+      "type": "http",
+      "url": "https://dashscope.aliyuncs.com/api/v1/mcps/market-cmapi011240/mcp",
       "headers": {
         "Authorization": "Bearer sk-11a03e9b68fd40c1936db00fbc37221e"
       }

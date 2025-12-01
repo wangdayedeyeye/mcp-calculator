@@ -14,29 +14,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create release archive
-        run: |
-          # 排除不必要的文件，减小传输体积
-          tar -czf release.tar.gz \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='.venv' \
-            --exclude='__pycache__' \
-            --exclude='*.pyc' \
-            .
-
-      - name: Upload archive to remote server (SCP)
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ vars.ALI_HOST }}
-          username: ${{ vars.ALI_USER }}
-          port: ${{ vars.ALI_PORT }}
-          key: ${{ secrets.ALI_SSH_PRIVATE_KEY }}
-          source: "release.tar.gz"
-          target: ${{ vars.DEPLOY_PATH }}
-
       - name: SSH extract and run deploy commands
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ vars.ALI_HOST }}
           username: ${{ vars.ALI_USER }}
@@ -45,31 +24,31 @@ jobs:
           timeout: 60s
           command_timeout: 20m
           script: |
-            # 1. 确保目标目录存在并进入
-            mkdir -p "${{ vars.DEPLOY_PATH }}"
-            cd "${{ vars.DEPLOY_PATH }}"
-            
-            # 2. 解压文件（这是之前缺失的关键步骤！）
-            echo "📦 Extracting files..."
-            tar -xzf release.tar.gz
-            
-            # 3. 安装/同步依赖 (假设服务器已安装 uv)
-            echo "🔧 Syncing dependencies..."
-            uv sync --frozen --no-install-project -i https://pypi.tuna.tsinghua.edu.cn/simple
+            set -Eeuo pipefail
+            trap 'echo "❌ 部署失败，行号: $LINENO"; exit 1' ERR
+            DEPLOY_PATH="${{ vars.DEPLOY_PATH }}"
+            MCP_ENDPOINT="${{ vars.MCP_ENDPOINT }}"
+            FC_TMT_API_URL="${{ vars.FC_TMT_API_URL }}"
+            FC_TMT_API_TOKEN="${{ vars.FC_TMT_API_TOKEN }}"
+            : "${DEPLOY_PATH:?缺少 DEPLOY_PATH}"
+            : "${MCP_ENDPOINT:?缺少 MCP_ENDPOINT}"
+            : "${FC_TMT_API_URL:?缺少 FC_TMT_API_URL}"
+            : "${FC_TMT_API_TOKEN:?缺少 FC_TMT_API_TOKEN}"
+            cd "${DEPLOY_PATH}" || { echo "❌ 目录不存在: ${DEPLOY_PATH}"; exit 1; }
+            [[ -d ".git" ]] || { echo "❌ 目标目录不是 Git 仓库: ${DEPLOY_PATH}"; exit 1; }
+            git fetch --all --quiet || { echo "❌ 拉取远端代码失败"; exit 1; }
+            git reset --hard origin/main || { echo "❌ 重置到 origin/main 失败"; exit 1; }
+            command -v uv >/dev/null 2>&1 || { echo "❌ 未安装 uv，请先安装"; exit 1; }
+            export MCP_ENDPOINT
+            export FC_TMT_API_URL
+            export FC_TMT_API_TOKEN
+            echo "🔧 依赖安装中..."
+            uv sync -i https://pypi.tuna.tsinghua.edu.cn/simple || { echo "❌ 依赖同步失败"; exit 1; }
+            [[ -x ".venv/bin/python" ]] || { echo "❌ 未找到虚拟环境解释器: .venv/bin/python"; exit 1; }
             source .venv/bin/activate
-            
-            # 5. 设置环境变量并启动新进程
-            # export MCP_ENDPOINT="${{ vars.MCP_ENDPOINT }}"
-            
-            echo "🚀 Starting new process..."
-            sudo systemctl restart mcp-pipe
-            sudo systemctl status mcp-pipe --no-pager
-
-      - name: Cleanup local archive
-        if: always()
-        run: rm -f release.tar.gz
-
-# 配置说明：
-# 1. 必须确保 secrets.ALI_SSH_PRIVATE_KEY 包含完整的 "-----BEGIN RSA PRIVATE KEY-----" 头尾。
-# 2. vars.DEPLOY_PATH 结尾最好不带斜杠，例如: /home/admin/mcp-servers/xiaozhi-mcp
-# 3. 如果服务器未安装 `uv`，脚本里的 fallback 逻辑会尝试用标准 pip。
+            [[ -f "mcp_pipe.py" ]] || { echo "❌ 未找到启动脚本: mcp_pipe.py"; exit 1; }
+            echo "🚀 正在重启服务..."
+            sudo systemctl restart mcp_pipe || { echo "❌ 重启 mcp_pipe 失败"; sudo systemctl status mcp_pipe --no-pager; exit 1; }
+            systemctl is-active --quiet mcp_pipe || { echo "❌ mcp_pipe 未处于活跃状态，最近日志："; sudo journalctl -u mcp_pipe --no-pager -n 200; exit 1; }
+            echo "✅ 部署成功，服务状态："
+            sudo systemctl status mcp_pipe --no-pager

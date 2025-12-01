@@ -39,23 +39,3 @@ jobs:
             echo "🔧 安装依赖..."
             uv sync -i https://pypi.tuna.tsinghua.edu.cn/simple
             
-            echo "🚀 重启进程..."
-            LOG_FILE="logs/mcp_pipe.log"
-            mkdir -p logs
-            
-            # ✅ 关键修改1：使用 [e] 技巧防止 pkill 杀死部署脚本自身
-            # 正则 mcp_pip[e].py 匹配 "mcp_pipe.py"，但不匹配脚本中的 "mcp_pip[e].py" 字串
-            pkill -f "python.*mcp_pip[e].py" || true
-            
-            # ✅ 关键修改2：加回 setsid，确保进程完全后台化
-            nohup setsid .venv/bin/python mcp_pipe.py >> "$LOG_FILE" 2>&1 < /dev/null & 
-            NEW_PID=$!
-            
-            sleep 3
-            if kill -0 "$NEW_PID" 2>/dev/null; then
-              echo "✅ 部署成功，PID: $NEW_PID"
-            else
-              echo "❌ 进程启动失败，日志如下："
-              tail -n 50 "$LOG_FILE"
-              exit 1
-            fi

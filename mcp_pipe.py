@@ -29,10 +29,10 @@ import signal
 import sys
 import json
 import ssl
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 
 # Auto-load environment variables from a .env file if present
-# load_dotenv()
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(

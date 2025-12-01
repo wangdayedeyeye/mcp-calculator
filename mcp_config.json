@@ -3,12 +3,12 @@
     "local-stdio-calculator": {
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "server.calculator"]
+      "args": ["-m", "servers/calculator"]
     },
     "local-studio-trade-target": {
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "server.trade_target"]
+      "args": ["-m", "servers/trade_target"]
     },
     "remote-sse-server": {
       "type": "sse",

@@ -3,7 +3,7 @@ name: Deploy to Alibaba Cloud Server
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # 启用手动触发（无参数）
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -16,18 +16,14 @@ jobs:
 
       - name: Create release archive
         run: |
-          tar -czf release.tar.gz --exclude=.git --exclude=.github --exclude=.venv --exclude=release.tar.gz . || [[ $? -eq 1 ]]
-
-      - name: Debug SSH Key
-        run: |
-          if [ -z "${{ secrets.ALI_SSH_PRIVATE_KEY }}" ]; then
-            echo "❌ Error: ALI_SSH_PRIVATE_KEY is EMPTY!"
-            exit 1
-          else
-            echo "✅ ALI_SSH_PRIVATE_KEY is set (Length: ${#SECRET_VAL})"
-          fi
-        env:
-          SECRET_VAL: ${{ secrets.ALI_SSH_PRIVATE_KEY }}
+          # 排除不必要的文件，减小传输体积
+          tar -czf release.tar.gz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.venv' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            .
 
       - name: Upload archive to remote server (SCP)
         uses: appleboy/scp-action@master
@@ -49,43 +45,31 @@ jobs:
           timeout: 60s
           command_timeout: 20m
           script: |
+            # 1. 确保目标目录存在并进入
+            mkdir -p "${{ vars.DEPLOY_PATH }}"
             cd "${{ vars.DEPLOY_PATH }}"
-            # 这里去掉 set -e，防止 nohup 之前的命令如果抛出警告导致意外停止
-            # set -e 
             
-            export MCP_ENDPOINT="${{ vars.MCP_ENDPOINT }}"
+            # 2. 解压文件（这是之前缺失的关键步骤！）
+            echo "📦 Extracting files..."
+            tar -xzf release.tar.gz
             
-            # 1. 安装依赖
-            uv sync -i https://pypi.tuna.tsinghua.edu.cn/simple
+            # 3. 安装/同步依赖 (假设服务器已安装 uv)
+            echo "🔧 Syncing dependencies..."
+            uv sync --frozen --no-install-project -i https://pypi.tuna.tsinghua.edu.cn/simple
             source .venv/bin/activate
             
-            # 2. 停止旧进程
-            pkill -f mcp_pipe.py || true
+            # 5. 设置环境变量并启动新进程
+            # export MCP_ENDPOINT="${{ vars.MCP_ENDPOINT }}"
             
-            # 3. 启动新进程（关键修改）
-            # > output.log 2>&1 : 将标准输出和错误输出重定向到文件
-            # < /dev/null       : 【关键】切断标准输入，防止 SSH 挂起
-            # &                 : 后台运行
-            nohup .venv/bin/python mcp_pipe.py > output.log 2>&1 < /dev/null &
-            
-            # 4. 获取 PID 并打印（可选，方便调试）
-            echo "New PID: $!"
-            
-            # 5. 等待几秒确保进程稳定，然后强制退出 SSH 会话
-            sleep 2
-            exit 0
+            echo "🚀 Starting new process..."
+            sudo systemctl restart mcp-pipe
+            sudo systemctl status mcp-pipe --no-pager
 
       - name: Cleanup local archive
         if: always()
         run: rm -f release.tar.gz
 
-# 说明：
-# 1) 请在仓库 Settings -> Secrets and variables -> Actions 中添加以下 secrets：
-#    - ALI_HOST: 47.107.36.64
-#    - ALI_PORT: 22
-#    - ALI_USER: admin
-#    - ALI_SSH_PRIVATE_KEY: （你的私钥 PEM 内容，建议不带密码）
-#    - DEPLOY_PATH: /home/admin/mcp-servers/xiaozhi-mcp/
-#    - MCP_ENDPOINT: wss://api.xiaozhi.me/mcp/?token=ey....
-# 2) 私钥内容建议直接粘贴，不要带密码（如有密码请告知）。
-# 3) 如需自定义命令，可在 SSH 步骤 script 里补充。
+# 配置说明：
+# 1. 必须确保 secrets.ALI_SSH_PRIVATE_KEY 包含完整的 "-----BEGIN RSA PRIVATE KEY-----" 头尾。
+# 2. vars.DEPLOY_PATH 结尾最好不带斜杠，例如: /home/admin/mcp-servers/xiaozhi-mcp
+# 3. 如果服务器未安装 `uv`，脚本里的 fallback 逻辑会尝试用标准 pip。

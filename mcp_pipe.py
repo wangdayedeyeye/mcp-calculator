@@ -28,10 +28,11 @@ import os
 import signal
 import sys
 import json
-from dotenv import load_dotenv
+import ssl
+# from dotenv import load_dotenv
 
 # Auto-load environment variables from a .env file if present
-load_dotenv()
+# load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -67,7 +68,12 @@ async def connect_to_server(uri, target):
     """Connect to WebSocket server and pipe stdio for the given server target."""
     try:
         logger.info(f"[{target}] Connecting to WebSocket server...")
-        async with websockets.connect(uri) as websocket:
+        # <--- 2. 新增：创建忽略 SSL 验证的上下文
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        async with websockets.connect(uri, ssl=ssl_context) as websocket:
             logger.info(f"[{target}] Successfully connected to WebSocket server")
 
             # Start server process (built from CLI arg or config)

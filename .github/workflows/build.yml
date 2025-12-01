@@ -24,44 +24,36 @@ jobs:
           timeout: 60s
           command_timeout: 20m
           script: |
-            # 设置严格模式：遇到错误直接退出，使用未定义变量报错
             set -Eeuo pipefail
             
-            # 1. 准备环境变量
             DEPLOY_PATH="${{ vars.DEPLOY_PATH }}"
             export MCP_ENDPOINT="${{ vars.MCP_ENDPOINT }}"
             export FC_TMT_API_URL="${{ vars.FC_TMT_API_URL }}"
             export FC_TMT_API_TOKEN="${{ vars.FC_TMT_API_TOKEN }}"
             
-            # 2. 更新代码
             echo "📥 更新代码..."
             cd "$DEPLOY_PATH"
             git fetch --all --quiet
             git reset --hard origin/main
             
-            # 3. 安装依赖 (uv 自带 venv 管理)
             echo "🔧 安装依赖..."
-            # 假设 uv 已安装在系统路径，无需手动检查 command -v
             uv sync -i https://pypi.tuna.tsinghua.edu.cn/simple
             
-            # 4. 重启服务
             echo "🚀 重启进程..."
             LOG_FILE="logs/mcp_pipe.log"
             mkdir -p logs
             
-            # 直接使用 pkill 杀掉旧进程 (忽略无进程时的错误)
-            pkill -f "python.*mcp_pipe.py" || true
+            # ✅ 关键修改1：使用 [e] 技巧防止 pkill 杀死部署脚本自身
+            # 正则 mcp_pip[e].py 匹配 "mcp_pipe.py"，但不匹配脚本中的 "mcp_pip[e].py" 字串
+            pkill -f "python.*mcp_pip[e].py" || true
             
-            # 后台启动
-            nohup .venv/bin/python mcp_pipe.py >> "$LOG_FILE" 2>&1 < /dev/null & 
+            # ✅ 关键修改2：加回 setsid，确保进程完全后台化
+            nohup setsid .venv/bin/python mcp_pipe.py >> "$LOG_FILE" 2>&1 < /dev/null & 
             NEW_PID=$!
             
-            # 5. 验证启动
             sleep 3
             if kill -0 "$NEW_PID" 2>/dev/null; then
               echo "✅ 部署成功，PID: $NEW_PID"
-              echo "📄 最近日志："
-              tail -n 20 "$LOG_FILE"
             else
               echo "❌ 进程启动失败，日志如下："
               tail -n 50 "$LOG_FILE"

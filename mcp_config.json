@@ -17,7 +17,10 @@
     },
     "remote-http-server": {
       "type": "http",
-      "url": "https://api.example.com/mcp",
+      "url": "https://dashscope.aliyuncs.com/api/v1/mcps/market-cmapi011240/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-11a03e9b68fd40c1936db00fbc37221e"
+      },
       "disabled": true
     }
   }
